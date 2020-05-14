@@ -108,58 +108,53 @@ const formattedTime = (time) => {
 
 export default view(() => (
   <div className="App">
-    <header className="App-header">
-      {!timer.ready ? (
-        <p>Syncing</p>
-      ) : (
-        <main>
-          <h1>{formattedTime(timer.time)}</h1>
-          <button
-            onClick={() => {
-              if (timer.status === "running") {
-                timer.pause();
-              } else {
-                timer.play();
-              }
-            }}
-          >
-            {timer.status === "running"
-              ? "Pause"
-              : timer.status === "paused"
-              ? "Resume"
-              : "Start"}
-          </button>
-          <button
-            onClick={() => {
-              timer.reset();
-            }}
-          >
-            Reset
-          </button>
-          <button
-            onClick={() => {
-              timer.addTime(10 * 1000);
-            }}
-          >
-            +10 seconds
-          </button>
-          <button
-            onClick={() => {
-              timer.addTime(60 * 1000);
-            }}
-          >
-            +1 minute
-          </button>
-          <button
-            onClick={() => {
-              timer.addTime(5 * 60 * 1000);
-            }}
-          >
-            +5 minutes
-          </button>
-          <p>Connections: {timer.connections}</p>
+    {!timer.ready ? (
+      <p>Syncing</p>
+    ) : (
+      <div className="container">
+        <main
+          className={timer.status === "running" ? "paused" : ""}
+          onClick={() => {
+            if (timer.status === "running") {
+              timer.pause();
+            } else {
+              timer.play();
+            }
+          }}
+        >
+          <span className="time">{formattedTime(timer.time)}</span>
+          <span className="status_sign" />
+          {/* <button
+          onClick={() => {
+            timer.reset();
+          }}
+        >
+          Reset
+        </button>
+        <button
+          onClick={() => {
+            timer.addTime(10 * 1000);
+          }}
+        >
+          +10 seconds
+        </button>
+        <button
+          onClick={() => {
+            timer.addTime(60 * 1000);
+          }}
+        >
+          +1 minute
+        </button>
+        <button
+          onClick={() => {
+            timer.addTime(5 * 60 * 1000);
+          }}
+        >
+          +5 minutes
+        </button> */}
         </main>
-      )}
-    </header>
+        <p>Connections: {timer.connections}</p>
+      </div>
+    )}
   </div>
 ));
