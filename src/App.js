@@ -3,16 +3,14 @@ import "./App.css";
 
 import Bugout from "bugout/docs/bugout.min.js";
 import { store, view } from "@risingstack/react-easy-state";
+import { hri } from "human-readable-ids";
 
 const DEFAULT_START_TIME = 10 * 60 * 1000;
 
-let b = window.location.hash
-  ? new Bugout(window.location.hash.substr(1))
-  : Bugout();
-
-if (!window.location.hash) window.location.hash = b.address();
+let b;
 
 const timer = store({
+  joinDate: Date.now(),
   connections: 0,
   ready: false,
   time: DEFAULT_START_TIME,
@@ -25,22 +23,22 @@ const timer = store({
   play: () => {
     timer.status = "running";
     timer.endTime = Date.now() + timer.time;
-    timer.sendState();
+    timer.shareState();
   },
   pause: () => {
     timer.status = "paused";
-    timer.sendState();
+    timer.shareState();
   },
   reset: () => {
     timer.status = "idle";
     timer.endTime = Date.now() + timer.startAmount;
     timer.time = timer.startAmount;
-    timer.sendState();
+    timer.shareState();
   },
   addTime: (amount) => {
     timer.endTime = timer.endTime + amount;
     timer.time = timer.time + amount;
-    timer.sendState();
+    timer.shareState();
   },
   setState: (state) => {
     timer.ready = false;
@@ -49,38 +47,84 @@ const timer = store({
     timer.endTime = state.endTime;
     timer.status = state.status;
   },
-  sendState: (ad) => {
+  requestToJoin: (ad) => {
+    b.send(ad, { type: "ask", joinDate: timer.joinDate });
+  },
+  acceptRequest: (ad) => {
     const state = {
       time: timer.time,
       startAmount: timer.startAmount,
       endTime: timer.endTime,
       status: timer.status,
     };
-    if (ad) {
-      console.log("sending state to", ad, state);
-      b.send(ad, { state, justJoined: !timer.ready });
-    } else {
-      console.log("sending state to all", state);
-      b.send({ state, justJoined: !timer.ready });
+    b.send(ad, { type: "accept", state });
+  },
+  shareState: () => {
+    if (timer.ready) {
+      const state = {
+        time: timer.time,
+        startAmount: timer.startAmount,
+        endTime: timer.endTime,
+        status: timer.status,
+      };
+      console.log("sharing new state to all");
+      b.send({ type: "share", state });
     }
   },
 });
+
+if (window.location.hash) {
+  b = new Bugout("Sm34sQyBLqcM" + window.location.hash.substr(1));
+} else {
+  const id = hri.random();
+  window.location.hash = id;
+  b = Bugout("Sm34sQyBLqcM" + id);
+  timer.ready = true;
+}
 
 b.on("connections", (count) => {
   timer.connections = count;
 });
 
-b.on("message", (address, { state, justJoined }) => {
-  if (!justJoined && (address !== b.address() || !timer.ready)) {
-    console.log("got message from", address, state, justJoined);
-    timer.setState(state);
-    timer.ready = true;
+b.on("message", (address, { type, state, joinDate }) => {
+  if (address !== b.address()) {
+    if (type === "ask") {
+      if (timer.ready) {
+        console.log(address, "asks to join, accepting");
+        timer.acceptRequest(address);
+      } else {
+        if (joinDate > timer.joinDate) {
+          console.log(
+            address,
+            "asks to join, conflict, but they were here before, so ignoring"
+          );
+          timer.ready = true;
+        } else {
+          console.log(
+            address,
+            "asks to join, conflict, but we were here before, so accepting"
+          );
+          timer.acceptRequest(address);
+          timer.ready = true;
+        }
+      }
+    } else if (type === "accept" && !timer.ready) {
+      console.log(address, "accepted request to join");
+      timer.setState(state);
+      timer.ready = true;
+    } else if (type === "share" && timer.ready) {
+      console.log("received new state from", address, "syncing");
+      timer.setState(state);
+      timer.ready = true;
+    }
   }
 });
 
 b.on("seen", (ad) => {
   console.log("seen:", ad);
-  timer.sendState(ad);
+  if (!timer.ready) {
+    timer.requestToJoin(ad);
+  }
 });
 
 setInterval(() => {
@@ -88,13 +132,6 @@ setInterval(() => {
     timer.tick();
   }
 }, 100);
-
-setTimeout(() => {
-  //if nobody connected in some time then call it ready
-  if (!timer.connections) {
-    timer.ready = true;
-  }
-}, 5000);
 
 const formattedTime = (time) => {
   const secs = Math.floor(time / 1000) % 60;
@@ -108,23 +145,20 @@ const formattedTime = (time) => {
 
 export default view(() => (
   <div className="App">
-    {!timer.ready ? (
-      <p>Syncing</p>
-    ) : (
-      <div className="container">
-        <main
-          className={timer.status === "running" ? "paused" : ""}
-          onClick={() => {
-            if (timer.status === "running") {
-              timer.pause();
-            } else {
-              timer.play();
-            }
-          }}
-        >
-          <span className="time">{formattedTime(timer.time)}</span>
-          <span className="status_sign" />
-          {/* <button
+    <div className="container">
+      <main
+        className={timer.status === "running" ? "paused" : ""}
+        onClick={() => {
+          if (timer.status === "running") {
+            timer.pause();
+          } else {
+            timer.play();
+          }
+        }}
+      >
+        <span className="time">{formattedTime(timer.time)}</span>
+        <span className="status_sign" />
+        {/* <button
           onClick={() => {
             timer.reset();
           }}
@@ -152,9 +186,8 @@ export default view(() => (
         >
           +5 minutes
         </button> */}
-        </main>
-        <p>Connections: {timer.connections}</p>
-      </div>
-    )}
+      </main>
+      <p>Connections: {timer.connections}</p>
+    </div>
   </div>
 ));
